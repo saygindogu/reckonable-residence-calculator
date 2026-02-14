@@ -19,7 +19,8 @@ fun main() {
     // Note that this requires additional authorization from the Irish Government to be counted as reckonable residence.
     // Please refer to the documents issued by Department of Justice with relation to pandemic and residence permits.
     val daysWithoutIRP = Duration.between(irelandFirstEntry, irpEntries.first().start).toDays()
-    val irpDays = irpEntries.sumOf { entry ->
+    val mergedIrpEntries = mergeOverlappingIrpEntries(irpEntries)
+    val irpDays = mergedIrpEntries.sumOf { entry ->
         val effectiveEnd = minOf(entry.end, todayLocalDate)
         Duration.between(entry.start, effectiveEnd).toDays()
     }
@@ -29,8 +30,8 @@ fun main() {
 
     val absentDays = calculateAbsentDays(travelsList)
     val daysAccumulated = daysWithoutIRP + irpDays
-    val daysLeft = GOAL_DAYS - (daysAccumulated - absentDays)
-    val dayToApply = today.plusDays(daysLeft)
+    val daysLeft = calculateDaysLeft(GOAL_DAYS, daysAccumulated, absentDays)
+    val dayToApply = today.plusDays(daysLeft.raw)
 
     val dateStamp = today.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
     val outDir = File("out").apply { mkdirs() }
@@ -47,7 +48,7 @@ fun main() {
         lastIrpEnd = lastIrpEnd,
         absentDays = absentDays,
         daysAccumulated = daysAccumulated,
-        daysLeft = daysLeft,
+        daysLeft = daysLeft.clamped,
         dayToApply = dayToApply,
         goalDays = GOAL_DAYS,
         excuseDays = EXCUSE_DAYS

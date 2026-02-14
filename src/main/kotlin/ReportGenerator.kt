@@ -115,10 +115,57 @@ fun generateReport(
     appendLine("| IRP Renewal Date | ${lastIrpEnd.format(FORMATTER)} |")
 }
 
-fun calculateAbsentDays(travelsList: List<Travel>): Int {
-    return travelsList.sumOf { daysBetween(it) }.toInt()
+fun mergeOverlappingIrpEntries(irpEntries: List<IrpEntry>): List<IrpEntry> {
+    if (irpEntries.size <= 1) return irpEntries
+    val sorted = irpEntries.sortedBy { it.start }
+    val merged = mutableListOf(sorted.first())
+    for (entry in sorted.drop(1)) {
+        val last = merged.last()
+        if (entry.start <= last.end) {
+            merged[merged.lastIndex] = IrpEntry(
+                name = last.name,
+                start = last.start,
+                end = maxOf(last.end, entry.end)
+            )
+        } else {
+            merged.add(entry)
+        }
+    }
+    return merged
 }
 
-// Travel dates count into reckonable residence.
-// Start Inclusive, so we need to add 1 day more. End exclusive so we don't add anything.
-fun daysBetween(it: Travel) = Duration.between(it.start.plusDays(1), it.end).toDays()
+fun mergeOverlappingTravels(travelsList: List<Travel>): List<Travel> {
+    if (travelsList.size <= 1) return travelsList
+    val sorted = travelsList.sortedBy { it.start }
+    val merged = mutableListOf(sorted.first())
+    for (travel in sorted.drop(1)) {
+        val last = merged.last()
+        if (travel.start <= last.end) {
+            merged[merged.lastIndex] = Travel(
+                start = last.start,
+                end = maxOf(last.end, travel.end),
+                location = last.location
+            )
+        } else {
+            merged.add(travel)
+        }
+    }
+    return merged
+}
+
+fun calculateAbsentDays(travelsList: List<Travel>): Int {
+    return mergeOverlappingTravels(travelsList).sumOf { daysBetween(it) }.toInt()
+}
+
+data class DaysLeft(val raw: Long) {
+    val clamped: Long get() = maxOf(0, raw)
+}
+
+fun calculateDaysLeft(goalDays: Int, daysAccumulated: Long, absentDays: Int): DaysLeft =
+    DaysLeft(goalDays.toLong() - (daysAccumulated - absentDays))
+
+// Both departure and return days count as reckonable residence (you're in Ireland on those days).
+// Absent days are only the full days spent abroad, excluding both endpoints.
+// e.g. Aug 10 to Aug 15: departure Aug 10 (reckonable), return Aug 15 (reckonable),
+//      absent = Aug 11, 12, 13, 14 = 4 days = Duration(Aug 11, Aug 15) = 4
+fun daysBetween(it: Travel) = maxOf(0, Duration.between(it.start.plusDays(1), it.end).toDays())
